@@ -107,12 +107,16 @@ Thumbs.db
 ```json
 {
   "model": "opusplan",
-  "effortLevel": "high"
+  "effortLevel": "high",
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku"
+  }
 }
 ```
 
 - `model` 不是 `opusplan` → 修改為 `opusplan`
 - `effortLevel` 不存在 → 加入 `"effortLevel": "high"`
+- `env.CLAUDE_CODE_SUBAGENT_MODEL` 不是 `"haiku"` → 補上或修正
 - 檔案不存在 → 建立並寫入上述內容
 
 > 注意：修改時保留使用者原有的其他設定，只補充缺少的欄位，不要覆蓋整個檔案。
