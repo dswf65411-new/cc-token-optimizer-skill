@@ -108,7 +108,8 @@ Thumbs.db
   "model": "opusplan",
   "effortLevel": "high",
   "env": {
-    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku"
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "60"
   }
 }
 ```
@@ -116,6 +117,7 @@ Thumbs.db
 - `model` 不是 `opusplan` → 修改為 `opusplan`
 - `effortLevel` 不存在 → 加入 `"effortLevel": "high"`
 - `env.CLAUDE_CODE_SUBAGENT_MODEL` 不是 `"haiku"` → 補上或修正
+- `env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` 不是 `"60"` → 補上或修正（讓 context 用到 60% 時自動 compact，取代預設的 80-95%）
 - 檔案不存在 → 建立並寫入上述內容
 
 > 注意：修改時保留使用者原有的其他設定，只補充缺少的欄位，不要覆蓋整個檔案。
