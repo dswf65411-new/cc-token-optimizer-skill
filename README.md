@@ -1,114 +1,169 @@
 # cc-token-optimizer-skill
 
-A Claude Code skill that audits and actively compacts all Claude memory files on your machine, reducing context size for faster, cheaper sessions.
+Claude Code skill，用來審查並主動壓縮你電腦上所有 Claude 記憶檔案，縮小每次 session 載入的 context 大小，讓對話更快、更省 token。
 
-## What it does
+---
 
-Running `/token-optimizer` performs 6 checks in sequence, each tracked as a task:
+## ⚠️ 執行前請務必閱讀：這個 skill 會對你的環境做什麼
 
-| # | Check | Action |
-|---|-------|--------|
-| 1 | `.claudeignore` | Creates it if missing; fills in missing patterns |
-| 2 | `~/.claude/settings.json` | Ensures `model: opusplan` and `effortLevel: high` |
-| 3 | **Memory compaction** | Scans every Claude memory file on your machine → backs them up → spawns parallel agents to compress each file without losing meaning |
-| 4 | MCP server audit | Flags MCPs that can be replaced with CLI tools |
-| 5 | Subagent model audit | Recommends `haiku/sonnet/opus` per agent role |
-| 6 | Context usage | Warns if session context is approaching 60% |
+**直接改動你的檔案，而不只是建議。** 以下逐項說明每個步驟會造成的真實變化：
 
-### Memory compaction in detail (check #3)
+### 步驟 1 — `.claudeignore`
+- **沒有**這個檔案時：在當前目錄**新建** `.claudeignore`，寫入預設忽略規則（node_modules、*.log、*.pyc、*.png 等二進位/產物檔）
+- **已存在**時：補上缺少的忽略模式（不刪除你現有的設定）
+- 影響：Claude Code 往後在這個專案讀取檔案時，會跳過上述類型的檔案
 
-Scope — files included in the scan:
+### 步驟 2 — `~/.claude/settings.json`
+**直接修改全域設定檔**，確保以下四個欄位存在且正確：
 
-- `~/.claude/CLAUDE.md` (global instructions)
-- All project `CLAUDE.md` files (up to depth 6, excluding `node_modules` and worktrees)
-- All `~/.claude/projects/*/memory/MEMORY.md` index files
-- All `~/.claude/projects/*/memory/*.md` individual memory entries
+```json
+{
+  "model": "opusplan",
+  "effortLevel": "high",
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "60"
+  }
+}
+```
 
-Scope — always excluded:
+| 欄位 | 效果 |
+|------|------|
+| `model: opusplan` | 主對話使用 Opus 模型 + 思考模式 |
+| `effortLevel: high` | 最高推理品質 |
+| `CLAUDE_CODE_SUBAGENT_MODEL: haiku` | 所有 subagent（子任務）改用 Haiku 節省 token |
+| `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: 60` | context 用到 60% 時自動 compact，而非預設的 80–95% |
 
-- `~/.claude/skills/**` (skill definitions, not your memory)
-- `**/node_modules/**`
-- `**/.claude/worktrees/**`
-- `~/.claude/file-history/**` and `~/.claude/backups/**`
+> 修改時只補缺少的欄位，**不會刪除你原有的其他設定**（如 hooks、statusLine 等）。
 
-What the compaction agents do:
+### 步驟 3 — 全域記憶壓縮（影響最大，請特別注意）
 
-- Keep every semantic fact (rules, paths, commands, names, dates, URLs, env var names)
-- Keep YAML frontmatter and `Why:` / `How to apply:` fields
-- Remove repeated explanations, redundant examples, filler phrases
-- Rewrite prose as bullet points where possible
-- Write the compacted content back to the original path
-- Report `BEFORE → AFTER` line counts and reduction %
+掃描整台電腦所有 Claude 記憶檔案，對每個檔案 **spawn 一個 agent 進行 AI 壓縮，並寫回原路徑**。
 
-Safety: a full backup is created at `~/.claude/backups/memory-compact-<timestamp>/` before any file is touched. One-line restore: `cp -r ~/.claude/backups/memory-compact-<timestamp>/* /`
+**掃描範圍**：
+- `~/.claude/CLAUDE.md`（全域指令）
+- 所有專案的 `CLAUDE.md`（深度 6 層，排除 node_modules 和 worktrees）
+- `~/.claude/projects/*/memory/MEMORY.md`（各專案記憶索引）
+- `~/.claude/projects/*/memory/*.md`（各專案個別記憶條目）
 
-## Installation
+**排除**：`~/.claude/skills/`、`node_modules/`、`.claude/worktrees/`、`file-history/`、`backups/`
 
-### Requirements
+**壓縮原則**（AI agent 遵循）：
+- ✅ 保留所有語意事實（規則、路徑、指令、人名、日期、URL、環境變數名）
+- ✅ 保留 YAML frontmatter 與 `Why:` / `How to apply:` 欄位
+- ❌ 移除重複論述、冗長範例（同一觀念留一個即可）、填充詞
+- 改寫：長敘述 → 條列；冗長前言 → 直接切入
 
-- [Claude Code](https://claude.ai/code) installed and authenticated
-- Skills directory at `~/.claude/skills/` (Claude Code creates this automatically)
+**安全機制**：壓縮任何檔案前，**強制先整批備份**至 `~/.claude/backups/memory-compact-<timestamp>/`。
+萬一壓縮結果不滿意，一行指令還原：
 
-### Steps
+```bash
+cp -r ~/.claude/backups/memory-compact-<timestamp>/* /
+```
 
-1. Create the skill directory:
+> 若掃描到超過 30 個檔案，會先列出全部路徑詢問你確認，再開始壓縮。
+
+### 步驟 4 — MCP 伺服器審查
+- **只讀取、不修改任何設定**
+- 列出目前連接的 MCP，標注哪些有 CLI 替代方案（如 GitHub MCP → `gh`）
+- 建議你手動停用，但不會自動停用
+
+### 步驟 5 — Context 使用量
+- **只讀取、不修改任何設定**
+- 告知目前 session context 使用比例，提醒何時應執行 `/compact`
+
+---
+
+## 總結：哪些東西會被動到
+
+| 會被改動 | 說明 |
+|---------|------|
+| 當前目錄的 `.claudeignore` | 新增或補充忽略規則 |
+| `~/.claude/settings.json` | 補上缺少的 4 個欄位 |
+| 所有 Claude 記憶檔（CLAUDE.md、memory/*.md） | AI 壓縮後寫回原路徑（壓縮前自動備份） |
+
+| 不會被改動 | 說明 |
+|-----------|------|
+| MCP 設定 | 只報告，不動 |
+| 你的程式碼 | 完全不觸碰 |
+| `~/.zshrc` 或其他 shell 設定 | 完全不觸碰 |
+| Skills 目錄 | 排除在掃描範圍外 |
+
+---
+
+## 安裝
+
+### 前置需求
+
+- [Claude Code](https://claude.ai/code) 已安裝並登入
+
+### 安裝步驟
+
+1. 建立 skill 目錄：
 
 ```bash
 mkdir -p ~/.claude/skills/token-optimizer
 ```
 
-2. Download the skill file:
+2. 下載 skill 檔案：
 
 ```bash
 curl -o ~/.claude/skills/token-optimizer/skill.md \
   https://raw.githubusercontent.com/dswf65411-new/cc-token-optimizer-skill/main/skill.md
 ```
 
-Or clone and symlink if you want to stay up to date:
+或 clone 後 symlink（之後 `git pull` 即可更新）：
 
 ```bash
-git clone https://github.com/dswf65411-new/cc-token-optimizer-skill.git ~/codes/cc-token-optimizer-skill
+git clone https://github.com/dswf65411-new/cc-token-optimizer-skill.git ~/cc-token-optimizer-skill
 mkdir -p ~/.claude/skills/token-optimizer
-ln -s ~/codes/cc-token-optimizer-skill/skill.md ~/.claude/skills/token-optimizer/skill.md
+ln -s ~/cc-token-optimizer-skill/skill.md ~/.claude/skills/token-optimizer/skill.md
 ```
 
-3. Verify Claude Code can see the skill — open a new session and check:
+3. 開新的 Claude Code session，確認 skill 已載入：
 
 ```
 /skills
 ```
 
-You should see `token-optimizer` in the list.
+清單中出現 `token-optimizer` 即安裝成功。
 
-## Usage
+---
 
-In any Claude Code session, type:
+## 使用方式
+
+在任何 Claude Code session 中輸入：
 
 ```
 /token-optimizer
 ```
 
-Or trigger it with natural language:
+或用自然語言觸發：
 
-- "幫我優化 token 設定"
-- "檢查 Claude Code 設定"
-- "我 token 消耗太快"
-- "幫我做 token 健檢"
+- 「幫我優化 token 設定」
+- 「檢查 Claude Code 設定」
+- 「我 token 消耗太快」
+- 「幫我做 token 健檢」
 
-Claude will create a task list for all 6 checks and work through them one by one, asking for confirmation before making any changes that could be destructive (e.g., CLAUDE.md edits, memory compaction when > 30 files are involved).
+Claude 會先建立 5 個任務的清單，再依序執行，每步完成後更新進度。
 
-## When to run
+---
 
-- When starting a new project
-- When sessions feel sluggish or context fills up faster than expected
-- Periodically (e.g., monthly) to keep memory files lean
+## 適合何時執行
 
-## File structure
+- 剛設定好 Claude Code 環境時（確保設定正確）
+- Session context 消耗特別快時
+- 記憶檔案累積很多、對話開始變慢時
+- 定期維護（例如每個月一次）
+
+---
+
+## 檔案結構
 
 ```
 cc-token-optimizer-skill/
-├── skill.md      # The skill definition loaded by Claude Code
-└── README.md     # This file
+├── skill.md      # skill 定義檔，Claude Code 載入此檔
+└── README.md     # 本說明文件
 ```
 
 ## License
